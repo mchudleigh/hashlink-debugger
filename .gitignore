@@ -1,4 +1,5 @@
 node_modules
+.haxelib
 *.js
 *.js.map
 /package-lock.json
