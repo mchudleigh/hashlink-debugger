@@ -615,7 +615,8 @@ class HLAdapter extends DebugSession {
 		case VArray(_, len, _, _), VMap(_, len, _, _):
 			return { name : name, type : tstr, value : dbg.eval.valueStr(value), variablesReference : allocValue(VValue(value)), indexedVariables : len };
 		case VBytes(len, _):
-			return { name : name, type : tstr, value : tstr+":"+len, variablesReference : allocValue(VValue(value)), indexedVariables : (len+15)>>4 };
+			final numNamedFormats = 4;
+			return { name : name, type : tstr, value : tstr+":"+len, variablesReference : allocValue(VValue(value)), indexedVariables : (len+15)>>4, namedVariables: numNamedFormats };
 		case VClosure(f,context,_):
 			return { name : name, type : tstr, value : dbg.eval.funStr(f), variablesReference : allocValue(VValue(value)), indexedVariables : 2 };
 		default:
@@ -627,6 +628,15 @@ class HLAdapter extends DebugSession {
 		//debug("Variables Request " + args);
 		var vref = varsValues.get(args.variablesReference);
 		var vars = [];
+		var reqNamed = true;
+		var reqNumbered = true;
+		if (args.filter == Indexed) {
+			reqNamed = false;
+		}
+		if (args.filter == Named) {
+			reqNumbered = false;
+		}
+
 		response.body = { variables : vars };
 		switch( vref ) {
 		case VScope(k):
@@ -694,19 +704,68 @@ class HLAdapter extends DebugSession {
 						});
 					}
 				}
-			case VBytes(len, read, _):
+			case VBytes(len, read, p, fmt):
 				var max = (len + 15) >> 4;
 				var start = args.start == null ? 0 : args.start;
 				var count = args.count == null ? max - start : args.count;
 
-				for( i in start...start+count ) {
-					var p = i * 16;
-					var size = p + 16 > len ? len - p : 16;
-					var b = haxe.io.Bytes.alloc(size);
-					for( k in 0...size )
-						b.set(k,read(p+k));
-					vars.push({ name : ""+p, value : "0x"+b.toHex().toUpperCase(), variablesReference : 0 });
+				function getBytes(pos, len): haxe.io.Bytes {
+					var b = haxe.io.Bytes.alloc(len);
+					for (i in 0...len) {
+						b.set(i, read(pos+i));
+					}
+					return b;
 				}
+
+				switch(fmt) {
+					case Raw:
+						if (reqNumbered) {
+							for( i in start...start+count ) {
+								var p = i * 16;
+								var size = p + 16 > len ? len - p : 16;
+								var b = getBytes(p, size);
+								vars.push({ name : ""+p, value : "0x"+b.toHex().toUpperCase(), variablesReference : 0 });
+							}
+						}
+						if (reqNamed) {
+							var doubleVar = allocValue(VValue({ v: VBytes(len, read, p, Double), t: v.t}));
+							vars.push({name: "as-doubles", value: "", variablesReference : doubleVar, indexedVariables: Std.int(len/8)});
+							var floatVar = allocValue(VValue({ v: VBytes(len, read, p, Float), t: v.t}));
+							vars.push({name: "as-floats", value: "", variablesReference : floatVar, indexedVariables: Std.int(len/4)});
+							var intVar = allocValue(VValue({ v: VBytes(len, read, p, Int), t: v.t}));
+							vars.push({name: "as-ints", value: "", variablesReference : intVar, indexedVariables: Std.int(len/4)});
+							var shortVar = allocValue(VValue({ v: VBytes(len, read, p, Short), t: v.t}));
+							vars.push({name: "as-shorts", value: "", variablesReference : shortVar, indexedVariables: Std.int(len/2)});
+						}
+					case Double:
+						if (reqNumbered) {
+							for( i in start...start+count ) {
+								var val = getBytes(i*8, 8).getDouble(0);
+								vars.push({name: ""+i, value: ""+val, variablesReference: 0});
+							}
+						}
+					case Float:
+						if (reqNumbered) {
+							for( i in start...start+count ) {
+								var val = getBytes(i*4, 4).getFloat(0);
+								vars.push({name: ""+i, value: ""+val, variablesReference: 0});
+							}
+						}
+					case Int:
+						if (reqNumbered) {
+							for( i in start...start+count ) {
+								var val = getBytes(i*4, 4).getInt32(0);
+								vars.push({name: ""+i, value: ""+val, variablesReference: 0});
+							}
+						}
+					case Short:
+						if (reqNumbered) {
+							for( i in start...start+count ) {
+								var val = getBytes(i*2, 2).getUInt16(0);
+								vars.push({name: ""+i, value: ""+val, variablesReference: 0});
+							}
+						}
+					}
 			case VEnum(_,values, _):
 				for( i in 0...values.length )
 					try {

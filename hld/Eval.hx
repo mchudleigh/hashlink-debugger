@@ -87,7 +87,7 @@ class Eval {
 	function getPtr( v : Value ) {
 		return switch (v.v) {
 		case VNull: Pointer.make(0,0);
-		case VPointer(p), VString(_, p), VClosure(_,_,p), VFunction(_,p), VArray(_, _, _, p), VMap(_, _, _, _, p), VEnum(_, _, p), VBytes(_,_,p): p;
+		case VPointer(p), VString(_, p), VClosure(_,_,p), VFunction(_,p), VArray(_, _, _, p), VMap(_, _, _, _, p), VEnum(_, _, p), VBytes(_,_,p,_): p;
 		default: null;
 		}
 	}
@@ -554,7 +554,7 @@ class Eval {
 			case "haxe.io.Bytes":
 				var length = readI32(p.offset(align.ptr));
 				var bytes = readPointer(p.offset(align.ptr * 2));
-				v = VBytes(length, function(i) return readMem(bytes.offset(i),1).getUI8(0), p);
+				v = VBytes(length, function(i) return readMem(bytes.offset(i),1).getUI8(0), p, Raw);
 			default:
 			}
 		case HVirtual(_):
